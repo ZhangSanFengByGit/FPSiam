@@ -9,10 +9,17 @@ Feature Aggregation based Siamese Network for visual tracking
 
 
 框架：pytorch 1.0.0 with CUDA 9.0/ CUDNN
+
 python：2.7
+
 参考文献：
+
 Low-Latency Video Semantic Segmentation
+
 High Performance Visual Tracking with Siamese Region Proposal Network
+
 Fully-convolutional siamese networks for object tracking
+
 Siamese instance search for tracking
+
 等
