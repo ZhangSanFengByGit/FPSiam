@@ -650,6 +650,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     max_pos = np.zeros([batch_size])
     positive = np.greater_equal(iou, p.pos_th)
     negative = np.less(iou, p.pos_th)
+    print('number of positive example:{}, negative example:{}'.format(np.sum(positive), np.sum(negative)))
     positive_pos = [None for i in range(batch_size)]
 
     for batch in range(batch_size):
@@ -663,6 +664,9 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     score_gt = torch.from_numpy(score_gt).cuda().float()
     #compute class loss:
     cls_loss = _cross_entropy_loss(score, score_gt)
+
+
+
 
 
     box_loss = None

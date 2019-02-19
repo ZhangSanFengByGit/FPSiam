@@ -50,14 +50,16 @@ optimizer = torch.optim.SGD([{'params': net.featureExtract[11].parameters()}, \
 							 {'params': net.conv_xfit.parameters(), 'lr': 0.007}, \
 							 {'params': net.conv_oldfit.parameters(), 'lr': 0.007}, \
 							 {'params': net.kernel_pre.parameters(), 'lr': 0.01}, \
-							 {'params': net.embed_net.parameters(), 'lr': 0.007} ], lr = 0.0001, momentum = 0.9, weight_decay = 0.00005)
+							 {'params': net.embed_net.parameters(), 'lr': 0.007} ], lr = 0.000001, momentum = 0.9, weight_decay = 0.00005)
 
 
+
+'''
 # warm up
 for i in range(10):
     net.temple(torch.zeros(1, 3, 127, 127).cuda(), torch.zeros(1, 3, 271, 271).cuda())
     net(torch.zeros(1, 3, 271, 271).cuda(), set_source=True)
-
+'''
 
 #set data provider
 _data_provider = datas()
@@ -66,15 +68,15 @@ _data_provider = datas()
 
 
 #config
-batch_size = 32
-lamda = 1000
-epoch_rate = 20
+batch_size = 8
+lamda = 500
+epoch_rate = 50
 
 
 #begin training
 epoch_num = int(_data_provider.seq_num* epoch_rate)
 decay_step = 25
-lr_decay = math.pow(1e-4, 1/int(epoch_num/decay_step))
+lr_decay = math.pow(1e-4, 1.0/int(epoch_num/decay_step))
 print('lr_decay is : {}'.format(lr_decay))
 for epoch in range(epoch_num):
 	_data_provider.rand_pick_seq()
