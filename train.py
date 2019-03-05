@@ -50,7 +50,7 @@ optimizer = torch.optim.SGD([{'params': net.featureExtract[11].parameters()}, \
 							 {'params': net.conv_xfit.parameters(), 'lr': 0.007}, \
 							 {'params': net.conv_oldfit.parameters(), 'lr': 0.007}, \
 							 {'params': net.kernel_pre.parameters(), 'lr': 0.01}, \
-							 {'params': net.embed_net.parameters(), 'lr': 0.007} ], lr = 0.000001, momentum = 0.9, weight_decay = 0.00005)
+							 {'params': net.embed_net.parameters(), 'lr': 0.007} ], lr = 0.0001, momentum = 0.9, weight_decay = 0.00005)
 
 
 
@@ -69,7 +69,7 @@ _data_provider = datas()
 
 #config
 batch_size = 8
-lamda = 500
+lamda = 1
 epoch_rate = 50
 
 

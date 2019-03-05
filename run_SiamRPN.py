@@ -58,8 +58,8 @@ class TrackerConfig(object):
     adaptive = False
 
     # by zzc
-    pos_th = 0.8
-    neg_th = 0.3
+    pos_th = 0.5
+    low_th = 0.1
     lamda = 10.
 
     def update(self, cfg):
@@ -612,11 +612,14 @@ def SiamRPN_train_batch(train_config, instance_list, source_cxy_list, instance_c
     return cls_loss, box_loss
 
 
-#multiplied scale_z version!!!
+
 def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     batch_size = x_batch.size(0)
-
     delta, score = net(x_batch)
+
+############################################################
+        ##      transfer feature map to proposals
+############################################################
     delta = delta.view(batch_size, 4, -1)  # batch * 4 * (5*19*19)
     score = F.softmax(score.view(batch_size, 2, -1), dim = 1).float()  # batch * 2 * (5*19*19)
     score_size = score.size(2)
@@ -626,17 +629,22 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     delta_np = delta.data.cpu().numpy()
     proposals = np.zeros(delta_np.shape)
 
+    #####encode
     proposals[:,0,:] = delta_np[:,0,:] * p.anchor[:,2] + p.anchor[:,0]
     proposals[:,1,:] = delta_np[:,1,:] * p.anchor[:,3] + p.anchor[:,1]
     proposals[:,2,:] = np.exp(delta_np[:,2,:]) * p.anchor[:,2]
     proposals[:,3,:] = np.exp(delta_np[:,3,:]) * p.anchor[:,3]
+    #####encode
 
-    proposals[:,0,:] = np.clip(proposals[:,0,:], -1000, 1000)
-    proposals[:,1,:] = np.clip(proposals[:,1,:], -1000, 1000)
-    proposals[:,2,:] = np.clip(proposals[:,2,:], 1, 2000)
-    proposals[:,3,:] = np.clip(proposals[:,3,:], 1, 2000)
+
+    #####check
+    #proposals[:,0,:] = np.clip(proposals[:,0,:], -1000, 1000)
+    #proposals[:,1,:] = np.clip(proposals[:,1,:], -1000, 1000)
+    #proposals[:,2,:] = np.clip(proposals[:,2,:], 1, 2000)
+    #proposals[:,3,:] = np.clip(proposals[:,3,:], 1, 2000)
     assert np.amax(proposals)<=float('inf'), 'the value is : {}!!!!!!!'.format(np.amax(proposals))
     assert np.amin(proposals)>=-float('inf'), 'the value is : {}!!!!!!!'.format(np.amin(proposals))
+    #####
 
     proposals_box = np.zeros(proposals.shape)
     proposals_box[:,0,:] = proposals[:,0,:] - proposals[:,2,:]/2.
@@ -644,14 +652,25 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     proposals_box[:,2,:] = proposals[:,0,:] + proposals[:,2,:]/2.
     proposals_box[:,3,:] = proposals[:,1,:] + proposals[:,3,:]/2.
 
+
+############################################################
+        ##           compute IOU
+############################################################
     iou = bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, score_size)
     print('max iou:{}, min iou:{}, mean iou:{}'.format(np.amax(iou), np.amin(iou), np.mean(iou)))
     score_gt = np.zeros([batch_size, 2, score_size])
     max_pos = np.zeros([batch_size])
     positive = np.greater_equal(iou, p.pos_th)
     negative = np.less(iou, p.pos_th)
+    num_positive = np.sum(positive)
     print('number of positive example:{}, negative example:{}'.format(np.sum(positive), np.sum(negative)))
     positive_pos = [None for i in range(batch_size)]
+
+
+
+############################################################
+        ##           class loss
+############################################################
 
     for batch in range(batch_size):
         max_pos[batch] = np.argmax(iou[batch])
@@ -663,15 +682,16 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
     score_gt = torch.from_numpy(score_gt).cuda().float()
     #compute class loss:
-    cls_loss = _cross_entropy_loss(score, score_gt)
+    cls_loss,counted_anchor,real_count = _cross_entropy_loss(score, score_gt, num_positive, proposals_box)
 
 
-
-
-
+############################################################
+        ##           box loss
+############################################################
     box_loss = None
-    #compute box gt:
+    delta_gt_all = torch.empty(delta.size()).cuda()
     for batch in range(batch_size):
+        '''
         if positive_pos[batch].shape[0]>=1:
             assert positive_pos[batch].shape[1]==1
             batch_postive_num = positive_pos[batch].shape[0]
@@ -681,7 +701,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
             for i in range(batch_postive_num):
                 delta_positive[:, i] = delta[batch, :, positive_pos[batch][i, 0]]
 
-            #all the delta gt
+            #all the delta gt, encode
             delta_np_pos = np.zeros([4, 5*19*19])
             delta_np_pos[0,:] = (shift[batch, 0] - p.anchor[:,0])/p.anchor[:,2]
             delta_np_pos[1,:] = (shift[batch, 1] - p.anchor[:,1])/p.anchor[:,3]
@@ -692,8 +712,6 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
             delta_gt = np.zeros([4, batch_postive_num])
             for i in range(batch_postive_num):
                 delta_gt[:, i] = delta_np_pos[:, positive_pos[batch][i, 0]]
-
-
         else:
             delta_positive = torch.empty([4, 1]).cuda()
             delta_positive[:,0] = delta[batch, :,int(max_pos[batch])]
@@ -708,20 +726,30 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
             #pick the max_pos gt
             delta_gt = np.zeros([4,1])
             delta_gt[:,0] = delta_np_pos[:,int(max_pos[batch])]
+        '''
+
+        ############encode ground_truth
+        delta_gt_all[batch, 0, :] = (shift[batch, 0] - p.anchor[:,0]) / p.anchor[:,2]
+        delta_gt_all[batch, 1, :] = (shift[batch, 1] - p.anchor[:,1]) / p.anchor[:,3]
+        delta_gt_all[batch, 2, :] = np.log(gt_sz_list[batch, 0] / p.anchor[:,2])
+        delta_gt_all[batch, 3, :] = np.log(gt_sz_list[batch, 1] / p.anchor[:,3])
+        ############encode ground_truth
 
 
-        delta_gt = torch.from_numpy(delta_gt).cuda().float()
+    delta_gt = torch.from_numpy(delta_gt_all).cuda().float()
 
-        #conpute the box loss
-        #box_loss = F.mse_loss(delta, delta_gt, reduction='mean')
-        cur_box_loss = _smooth_l1(delta_positive, delta_gt)
+    #compute the box loss
+    #box_loss = F.mse_loss(delta, delta_gt, reduction='mean')
+    box_loss = _smooth_l1(delta, delta_gt, counted_anchor)
 
+        '''
         if type(box_loss)!=torch.Tensor:
             box_loss = cur_box_loss
         else:
             box_loss = box_loss + cur_box_loss
-    #mean box loss
-    box_loss = box_loss/batch_size
+        '''
+    #mean box loss by counted anchor number
+    box_loss = box_loss/real_count
 
     return cls_loss, box_loss
 
@@ -759,23 +787,55 @@ def bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, s
     return iou
 
 
-def _cross_entropy_loss(output, label, size_average=True, batch_average=False, sigma=1e-4):
+def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average=True, batch_average=False, sigma=1e-6):
     #label size [batch_size, 2, score_size], either contain 0 or 1
+    batch_size = output.size()[0]
+    num_total = np.prod(output.size())
+    num_count = min( num_positive*4 , num_total ) #positive:negative = 1:3
+    visited = np.zeros(output.size())
 
-    output_raw = torch.clamp((output+sigma), min=0, max=1)
-    output_loss = -(torch.log(output_raw) * label)
-    final_loss = torch.sum(output_loss)
+    #output_raw = torch.clamp((output+sigma), min=0, max=1)
+    output_loss = -(torch.log(output_raw + sigma) * label) - (torch.log(1 - output_raw - sigma))*(1 - label)
+    loss_np = output_loss.data.cpu().numpy()
+    final_loss = torch.Tensor(0).cuda()
+    counted_anchor = []
+
+    loop, real_count = 0, 0
+    while loop<num_total:
+        loop += 1
+        #####compute index
+        cur_pos = np.argmax(loss_np)
+        b_idx = cur_pos % (2* (5*19*19)) #second part is the size of one batch
+        c_idx = (cur_pos - b*(2* (5*19*19))) % 1805
+        d_idx = (cur_pos - b*(2* (5*19*19)) - c*(1805))
+        cur_pos = [b_idx, c_idx, d_idx]
+
+        loss_np[cur_pos[0], cur_pos[1], cur_pos[2]] = 0
+        if visited[cur_pos[0], cur_pos[1], cur_pos[2]] = 1: #[batch_size, 2, 5*19*19]
+            continue
+
+        final_loss = final_loss + output_loss[cur_pos[0], cur_pos[1], cur_pos[2]]
+        counted_anchor.append(cur_pos)
+        visited[cur_pos[0], cur_pos[1], cur_pos[2]] = 1
+        nms(cur_pos, proposals_box, visited)
+        real_count += 1
+
+        if real_count>num_count:
+            break
+
+    #final_loss = torch.sum(output_loss)
 
     if size_average:
-        final_loss /= int(np.prod(label.size()))
+        final_loss /= real_count
     elif batch_average:
         final_loss /= label.size()[0]
 
-    return final_loss
+    return final_loss, counted_anchor, real_count
+
 
 
 # original F1 smooth loss from rcnn
-def _smooth_l1( predicts, targets, sigma=3.0):
+def _smooth_l1( predicts, targets, counted_anchor, sigma=3.0):
     '''
         ResultLoss = outside_weights * SmoothL1(inside_weights * (box_pred - box_targets))
         SmoothL1(x) = 0.5 * (sigma * x)^2,    if |x| < 1 / sigma^2
@@ -784,21 +844,43 @@ def _smooth_l1( predicts, targets, sigma=3.0):
         outside_weights = 1/num_examples
     '''
 
-    predicts = predicts.view(-1)
-    targets  = targets.view(-1)
+    #predicts = predicts.view(-1)
+    #targets  = targets.view(-1)
     #weights  = weights.view(-1)
-
     sigma2 = sigma * sigma
-    diffs  =  predicts-targets
+    diffs  =  predicts - targets
     smooth_l1_signs = torch.abs(diffs) <  (1.0 / sigma2)
     smooth_l1_signs = smooth_l1_signs.type(torch.cuda.FloatTensor)
 
     smooth_l1_option1 = 0.5 * diffs* diffs *  sigma2
     smooth_l1_option2 = torch.abs(diffs) - 0.5  / sigma2
     loss = smooth_l1_option1*smooth_l1_signs + smooth_l1_option2*(1-smooth_l1_signs)
-    #loss = weights*(smooth_l1_option1*smooth_l1_signs + smooth_l1_option2*(1-smooth_l1_signs))
+    
+    final_loss = torch.Tensor(0).cuda()
+    for ii in range(counted_anchor.size()):
+        b, idx = counted_anchor[ii][0], counted_anchor[ii][2]
+        final_loss = final_loss + loss[b, :, idx].sum()
 
-    loss = loss.sum()
+    #loss = weights*(smooth_l1_option1*smooth_l1_signs + smooth_l1_option2*(1-smooth_l1_signs))
+    #loss.sum()
     #loss = loss.sum()/(weights.sum()+1e-12)
 
-    return loss
+    return final_loss
+
+
+
+def nms(cur_pos, proposals_box, visited):
+    b_idx, c_idx, d_idx = cur_pos[0], cur_pos[1], cur_pos[2]
+    batch_size, score_size = proposals_box.size()[0], 5*19*19
+    chosen_box = proposals_box[b_idx, :, d_idx]
+
+    for ii in range(score_size):
+        if ii== d_idx:
+            continue
+
+        cur_box = proposals_box[b_idx, :, ii]
+        iou = bb_intersection_over_union( chosen_box, cur_box )
+        if iou >= 0.7: ###############iou threshold ################ 
+            visited[b_idx, c_idx, d_idx] = 1
+
+
