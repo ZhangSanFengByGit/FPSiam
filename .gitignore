@@ -2,3 +2,4 @@ V3_AutoSaved_epoch_model/
 eval_output/
 SiamRPNOTB.model
 *.out
+*.pyc

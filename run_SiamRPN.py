@@ -689,7 +689,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
         ##           box loss
 ############################################################
     box_loss = None
-    delta_gt_all = torch.empty(delta.size()).cuda()
+    delta_gt_all = np.zeros([batch_size, 4, 5*19*19])
     for batch in range(batch_size):
         '''
         if positive_pos[batch].shape[0]>=1:
@@ -742,12 +742,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     #box_loss = F.mse_loss(delta, delta_gt, reduction='mean')
     box_loss = _smooth_l1(delta, delta_gt, counted_anchor)
 
-        '''
-        if type(box_loss)!=torch.Tensor:
-            box_loss = cur_box_loss
-        else:
-            box_loss = box_loss + cur_box_loss
-        '''
+
     #mean box loss by counted anchor number
     box_loss = box_loss/real_count
 
@@ -795,9 +790,9 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
     visited = np.zeros(output.size())
 
     #output_raw = torch.clamp((output+sigma), min=0, max=1)
-    output_loss = -(torch.log(output_raw + sigma) * label) - (torch.log(1 - output_raw - sigma))*(1 - label)
+    output_loss = -(torch.log(output + sigma) * label) - (torch.log(1 - output - sigma))*(1 - label)
     loss_np = output_loss.data.cpu().numpy()
-    final_loss = torch.Tensor(0).cuda()
+    final_loss = torch.Tensor([0]).cuda()
     counted_anchor = []
 
     loop, real_count = 0, 0
@@ -805,13 +800,13 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
         loop += 1
         #####compute index
         cur_pos = np.argmax(loss_np)
-        b_idx = cur_pos % (2* (5*19*19)) #second part is the size of one batch
-        c_idx = (cur_pos - b*(2* (5*19*19))) % 1805
-        d_idx = (cur_pos - b*(2* (5*19*19)) - c*(1805))
+        b_idx = cur_pos / (2* (5*19*19)) #second part is the size of one batch
+        c_idx = (cur_pos - b_idx*(2* (5*19*19))) / 1805
+        d_idx = (cur_pos - b_idx*(2* (5*19*19)) - c_idx*(1805))
         cur_pos = [b_idx, c_idx, d_idx]
 
         loss_np[cur_pos[0], cur_pos[1], cur_pos[2]] = 0
-        if visited[cur_pos[0], cur_pos[1], cur_pos[2]] = 1: #[batch_size, 2, 5*19*19]
+        if visited[cur_pos[0], cur_pos[1], cur_pos[2]] == 1: #[batch_size, 2, 5*19*19]
             continue
 
         final_loss = final_loss + output_loss[cur_pos[0], cur_pos[1], cur_pos[2]]
@@ -856,8 +851,8 @@ def _smooth_l1( predicts, targets, counted_anchor, sigma=3.0):
     smooth_l1_option2 = torch.abs(diffs) - 0.5  / sigma2
     loss = smooth_l1_option1*smooth_l1_signs + smooth_l1_option2*(1-smooth_l1_signs)
     
-    final_loss = torch.Tensor(0).cuda()
-    for ii in range(counted_anchor.size()):
+    final_loss = torch.Tensor([0]).cuda()
+    for ii in range(len(counted_anchor)):
         b, idx = counted_anchor[ii][0], counted_anchor[ii][2]
         final_loss = final_loss + loss[b, :, idx].sum()
 
@@ -871,7 +866,7 @@ def _smooth_l1( predicts, targets, counted_anchor, sigma=3.0):
 
 def nms(cur_pos, proposals_box, visited):
     b_idx, c_idx, d_idx = cur_pos[0], cur_pos[1], cur_pos[2]
-    batch_size, score_size = proposals_box.size()[0], 5*19*19
+    batch_size, score_size = proposals_box.shape[0], 5*19*19
     chosen_box = proposals_box[b_idx, :, d_idx]
 
     for ii in range(score_size):
