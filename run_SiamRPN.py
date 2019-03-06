@@ -783,6 +783,7 @@ def bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, s
 
 
 def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average=False, batch_average=False, sigma=0):
+
     #label size [batch_size, 2, score_size], either contain 0 or 1
     batch_size = output.size()[0]
     num_total = np.prod(output.size())
@@ -793,6 +794,7 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
     assert not torch.isnan(label).any()
     assert not torch.isnan(output).any()
     output_loss = -(torch.log(output + sigma) * label) + (-torch.log(1 - output - sigma))*(1 - label)
+
     assert not torch.isnan(output_loss).any()
     loss_np = output_loss.data.cpu().numpy()
     final_loss = torch.Tensor([0]).cuda()
