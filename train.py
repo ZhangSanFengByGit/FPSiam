@@ -119,7 +119,6 @@ for epoch in range(epoch_num):
 
 		loss = cls_loss + lamda*box_loss
 		if jj%1==0:
-			print('box loss size:{}  cls loss size:{}\n\n'.format(box_loss.size(),cls_loss.size()))
 			print('epoch:{} seq:{}	cls_loss:{} , box_loss:{}\n\n'.format(epoch, _data_provider.cur_seq, cls_loss.item(), box_loss.item()))
 			#save_print.write('epoch:{} seq:{}	cls_loss:{} , box_loss:{}\n'.format(epoch, _data_provider.cur_seq, cls_loss.item(), box_loss.item()))
 

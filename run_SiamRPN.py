@@ -683,7 +683,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     score_gt = torch.from_numpy(score_gt).cuda().float()
     #compute class loss:
     cls_loss,counted_anchor,real_count = _cross_entropy_loss(score, score_gt, num_positive, proposals_box)
-
+    print("real count in class loss is {}".format(real_count))
 
 ############################################################
         ##           box loss
@@ -791,6 +791,7 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
 
     #output_raw = torch.clamp((output+sigma), min=0, max=1)
     output_loss = -(torch.log(output + sigma) * label) - (torch.log(1 - output - sigma))*(1 - label)
+    assert not torch.isnan(output_loss).any()
     loss_np = output_loss.data.cpu().numpy()
     final_loss = torch.Tensor([0]).cuda()
     counted_anchor = []
