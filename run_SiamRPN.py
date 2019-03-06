@@ -803,12 +803,14 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
     loop, real_count = 0, 0
     while loop<num_total:
         loop += 1
+
         #####compute index
         cur_pos = np.argmax(loss_np)
         b_idx = cur_pos % (2* (5*19*19)) #second part is the size of one batch
         c_idx = (cur_pos - b*(2* (5*19*19))) % 1805
         d_idx = (cur_pos - b*(2* (5*19*19)) - c*(1805))
         cur_pos = [b_idx, c_idx, d_idx]
+        #####compute index
 
         loss_np[cur_pos[0], cur_pos[1], cur_pos[2]] = 0
         if visited[cur_pos[0], cur_pos[1], cur_pos[2]] = 1: #[batch_size, 2, 5*19*19]
@@ -817,7 +819,7 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
         final_loss = final_loss + output_loss[cur_pos[0], cur_pos[1], cur_pos[2]]
         counted_anchor.append(cur_pos)
         visited[cur_pos[0], cur_pos[1], cur_pos[2]] = 1
-        nms(cur_pos, proposals_box, visited)
+        nms(cur_pos, proposals_box, visited, loss_np)
         real_count += 1
 
         if real_count>num_count:
@@ -869,7 +871,7 @@ def _smooth_l1( predicts, targets, counted_anchor, sigma=3.0):
 
 
 
-def nms(cur_pos, proposals_box, visited):
+def nms(cur_pos, proposals_box, visited, loss_np):
     b_idx, c_idx, d_idx = cur_pos[0], cur_pos[1], cur_pos[2]
     batch_size, score_size = proposals_box.size()[0], 5*19*19
     chosen_box = proposals_box[b_idx, :, d_idx]
@@ -882,5 +884,7 @@ def nms(cur_pos, proposals_box, visited):
         iou = bb_intersection_over_union( chosen_box, cur_box )
         if iou >= 0.7: ###############iou threshold ################ 
             visited[b_idx, c_idx, d_idx] = 1
+            loss_np[b_idx, c_idx, d_idx] = 0
+
 
 
