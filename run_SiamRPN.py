@@ -638,10 +638,10 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
 
     #####check
-    #proposals[:,0,:] = np.clip(proposals[:,0,:], -1000, 1000)
-    #proposals[:,1,:] = np.clip(proposals[:,1,:], -1000, 1000)
-    #proposals[:,2,:] = np.clip(proposals[:,2,:], 1, 2000)
-    #proposals[:,3,:] = np.clip(proposals[:,3,:], 1, 2000)
+    proposals[:,0,:] = np.clip(proposals[:,0,:], -1000, 1000)
+    proposals[:,1,:] = np.clip(proposals[:,1,:], -1000, 1000)
+    proposals[:,2,:] = np.clip(proposals[:,2,:], 1, 2000)
+    proposals[:,3,:] = np.clip(proposals[:,3,:], 1, 2000)
     assert np.amax(proposals)<=float('inf'), 'the value is : {}!!!!!!!'.format(np.amax(proposals))
     assert np.amin(proposals)>=-float('inf'), 'the value is : {}!!!!!!!'.format(np.amin(proposals))
     #####
@@ -744,7 +744,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
 
     #mean box loss by counted anchor number
-    #box_loss = box_loss/real_count
+    box_loss = box_loss/real_count
 
     return cls_loss, box_loss
 
@@ -782,7 +782,7 @@ def bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, s
     return iou
 
 
-def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average=False, batch_average=False, sigma=0):
+def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average=True, batch_average=False, sigma=1e-3):
 
     #label size [batch_size, 2, score_size], either contain 0 or 1
     batch_size = output.size()[0]
@@ -790,10 +790,13 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
     num_count = min( num_positive*4 , num_total ) #positive:negative = 1:3
     visited = np.zeros(output.size())
 
-    #0output_raw = torch.clamp((output+sigma), min=0, max=1)
-    assert not torch.isnan(label).any()
-    assert not torch.isnan(output).any()
-    output_loss = -(torch.log(output + sigma) * label) + (-torch.log(1 - output - sigma))*(1 - label)
+    output_raw_pos = torch.clamp((output+sigma), min=0, max=1)
+    output_raw_neg = torch.clamp((output-sigma), min=0, max=1)
+    assert not torch.isnan(output_raw_pos).any()
+    assert not torch.isnan(output_raw_neg).any()
+    #testmax, testmin = torch.max(output), torch.min(output)
+    #print("the max output is:{}\nthe min output is:{}".format(testmax,testmin))
+    output_loss = -(torch.log(output_raw_pos) * label) + (-torch.log(1 - output_raw_neg))*(1 - label)
 
     assert not torch.isnan(output_loss).any()
     loss_np = output_loss.data.cpu().numpy()
