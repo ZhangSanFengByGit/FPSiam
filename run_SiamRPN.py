@@ -626,37 +626,54 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     assert torch.max(delta)<= float('inf')
     assert torch.max(delta)>= -float('inf')
 
-    delta_np = delta.data.cpu().numpy()
-    proposals = np.zeros(delta_np.shape)
+    raw_anchors = np.zeros((batch_size, 4 , 5*19*19) , dtype = np.float32)
+    for b in range(batch_size):
+        raw_anchors[b, 0, :] = p.anchor[:, 0]
+        raw_anchors[b, 1, :] = p.anchor[:, 1]
+        raw_anchors[b, 2, :] = p.anchor[:, 2]
+        raw_anchors[b, 3, :] = p.anchor[:, 3]
 
-    #####encode
+
+
+############################################################
+    #delta_np = delta.data.cpu().numpy()
+    #proposals = np.zeros(delta_np.shape)
+
+
+    '''
+    #####decode
     proposals[:,0,:] = delta_np[:,0,:] * p.anchor[:,2] + p.anchor[:,0]
     proposals[:,1,:] = delta_np[:,1,:] * p.anchor[:,3] + p.anchor[:,1]
     proposals[:,2,:] = np.exp(delta_np[:,2,:]) * p.anchor[:,2]
     proposals[:,3,:] = np.exp(delta_np[:,3,:]) * p.anchor[:,3]
-    #####encode
-
+    #####decode
+    '''
 
     #####check
-    proposals[:,0,:] = np.clip(proposals[:,0,:], -1000, 1000)
-    proposals[:,1,:] = np.clip(proposals[:,1,:], -1000, 1000)
-    proposals[:,2,:] = np.clip(proposals[:,2,:], 1, 2000)
-    proposals[:,3,:] = np.clip(proposals[:,3,:], 1, 2000)
-    assert np.amax(proposals)<=float('inf'), 'the value is : {}!!!!!!!'.format(np.amax(proposals))
-    assert np.amin(proposals)>=-float('inf'), 'the value is : {}!!!!!!!'.format(np.amin(proposals))
+    #proposals[:,0,:] = np.clip(proposals[:,0,:], -1000, 1000)
+    #proposals[:,1,:] = np.clip(proposals[:,1,:], -1000, 1000)
+    #proposals[:,2,:] = np.clip(proposals[:,2,:], 1, 2000)
+    #proposals[:,3,:] = np.clip(proposals[:,3,:], 1, 2000)
+    #assert np.amax(proposals)<=float('inf'), 'the value is : {}!!!!!!!'.format(np.amax(proposals))
+    #assert np.amin(proposals)>=-float('inf'), 'the value is : {}!!!!!!!'.format(np.amin(proposals))
     #####
 
+    '''
     proposals_box = np.zeros(proposals.shape)
     proposals_box[:,0,:] = proposals[:,0,:] - proposals[:,2,:]/2.
     proposals_box[:,1,:] = proposals[:,1,:] - proposals[:,3,:]/2.
     proposals_box[:,2,:] = proposals[:,0,:] + proposals[:,2,:]/2.
     proposals_box[:,3,:] = proposals[:,1,:] + proposals[:,3,:]/2.
+    '''
+############################################################
+
+
 
 
 ############################################################
         ##           compute IOU
 ############################################################
-    iou = bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, score_size)
+    iou = bb_intersection_over_union_parallel_batch(raw_anchors, boxB, batch_size, score_size)
     print('max iou:{}, min iou:{}, mean iou:{}'.format(np.amax(iou), np.amin(iou), np.mean(iou)))
     score_gt = np.zeros([batch_size, 2, score_size])
     max_pos = np.zeros([batch_size])
@@ -664,7 +681,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     negative = np.less(iou, p.pos_th)
     num_positive = np.sum(positive)
     print('number of positive example:{}, negative example:{}'.format(np.sum(positive), np.sum(negative)))
-    positive_pos = [None for i in range(batch_size)]
+    #positive_pos = [None for i in range(batch_size)]
 
 
 
@@ -674,7 +691,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
     for batch in range(batch_size):
         max_pos[batch] = np.argmax(iou[batch])
-        positive_pos[batch] = np.argwhere(positive[batch]==1)
+        #positive_pos[batch] = np.argwhere(positive[batch]==1)
         score_gt[batch, 1, :] = positive[batch]*1
         score_gt[batch, 0, :] = negative[batch]*1
         score_gt[batch, 1, int(max_pos[batch])] = 1
@@ -682,7 +699,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
     score_gt = torch.from_numpy(score_gt).cuda().float()
     #compute class loss:
-    cls_loss,counted_anchor,real_count = _cross_entropy_loss(score, score_gt, num_positive, proposals_box)
+    cls_loss,counted_anchor,real_count = _cross_entropy_loss(score, score_gt, num_positive, raw_anchors, positive)
     print("real count in class loss is {}".format(real_count))
 
 ############################################################
@@ -782,7 +799,7 @@ def bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, s
     return iou
 
 
-def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average=True, batch_average=False, sigma=1e-3):
+def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, size_average=True, batch_average=False, sigma=1e-3):
 
     #label size [batch_size, 2, score_size], either contain 0 or 1
     batch_size = output.size()[0]
@@ -820,7 +837,10 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, size_average
             continue
 
         final_loss = final_loss + output_loss[cur_pos[0], cur_pos[1], cur_pos[2]]
-        counted_anchor.append(cur_pos)
+        
+        if positive[b_idx, d_idx] == True:
+            counted_anchor.append(cur_pos)
+        
         visited[cur_pos[0], cur_pos[1], cur_pos[2]] = 1
         nms(cur_pos, proposals_box, visited, loss_np)
         real_count += 1
