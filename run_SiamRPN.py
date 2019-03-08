@@ -61,6 +61,7 @@ class TrackerConfig(object):
     pos_th = 0.5
     low_th = 0.1
     lamda = 10.
+    sample_th = 128
 
     def update(self, cfg):
         for k, v in cfg.items():
@@ -699,7 +700,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
     score_gt = torch.from_numpy(score_gt).cuda().float()
     #compute class loss:
-    cls_loss,counted_anchor,real_count = _cross_entropy_loss(score, score_gt, num_positive, raw_anchors, positive)
+    cls_loss,counted_anchor,real_count = _cross_entropy_loss(score, score_gt, num_positive, raw_anchors, positive, p)
     print("real count in class loss is {}".format(real_count))
 
 ############################################################
@@ -799,12 +800,13 @@ def bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, s
     return iou
 
 
-def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, size_average=True, batch_average=False, sigma=1e-3):
+def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p, size_average=True, batch_average=False, sigma=1e-3):
 
     #label size [batch_size, 2, score_size], either contain 0 or 1
     batch_size = output.size()[0]
     num_total = np.prod(output.size())
     num_count = min( num_positive*4 , num_total ) #positive:negative = 1:3
+    num_count = max( num_count, p.sample_th )
     visited = np.zeros(output.size())
 
     output_raw_pos = torch.clamp((output+sigma), min=0, max=1)
@@ -848,6 +850,7 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, si
         if real_count>num_count:
             break
 
+    real_count -= 1
     #final_loss = torch.sum(output_loss)
 
     if size_average:
