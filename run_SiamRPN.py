@@ -58,10 +58,10 @@ class TrackerConfig(object):
     adaptive = False
 
     # by zzc
-    pos_th = 0.5
+    pos_th = 0.45
     low_th = 0.1
     lamda = 10.
-    sample_th = 128
+    sample_th = 12
 
     def update(self, cfg):
         for k, v in cfg.items():
@@ -627,14 +627,16 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     assert torch.max(delta)<= float('inf')
     assert torch.max(delta)>= -float('inf')
 
+    delta_np = delta.data.cpu().numpy()
+    score_np = score.data.cpu().numpy()
+    test_when_train(delta_np, score_np, p, boxB)
+
     raw_anchors = np.zeros((batch_size, 4 , 5*19*19) , dtype = np.float32)
     for b in range(batch_size):
         raw_anchors[b, 0, :] = p.anchor[:, 0]
         raw_anchors[b, 1, :] = p.anchor[:, 1]
         raw_anchors[b, 2, :] = p.anchor[:, 2]
         raw_anchors[b, 3, :] = p.anchor[:, 3]
-
-
 
 ############################################################
     #delta_np = delta.data.cpu().numpy()
@@ -668,9 +670,6 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
     '''
 ############################################################
 
-
-
-
 ############################################################
         ##           compute IOU
 ############################################################
@@ -700,7 +699,8 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
     score_gt = torch.from_numpy(score_gt).cuda().float()
     #compute class loss:
-    cls_loss,counted_anchor,real_count = _cross_entropy_loss(score, score_gt, num_positive, raw_anchors, positive, p)
+    cls_loss,counted_anchor,real_count, positive_count =\
+                     _cross_entropy_loss(score, score_gt, num_positive, raw_anchors, positive, p)
     print("real count in class loss is {}".format(real_count))
 
 ############################################################
@@ -762,7 +762,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
 
     #mean box loss by counted anchor number
-    box_loss = box_loss/real_count
+    box_loss = box_loss / max(1, positive_count)
 
     return cls_loss, box_loss
 
@@ -822,7 +822,7 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p,
     final_loss = torch.Tensor([0]).cuda()
     counted_anchor = []
 
-    loop, real_count = 0, 0
+    loop, real_count, positive_count= 0, 0, 0
     while loop<num_total:
         loop += 1
 
@@ -842,6 +842,7 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p,
         
         if positive[b_idx, d_idx] == True:
             counted_anchor.append(cur_pos)
+            positive_count += 1
         
         visited[cur_pos[0], cur_pos[1], cur_pos[2]] = 1
         nms(cur_pos, proposals_box, visited, loss_np)
@@ -858,12 +859,12 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p,
     elif batch_average:
         final_loss /= label.size()[0]
 
-    return final_loss, counted_anchor, real_count
+    return final_loss, counted_anchor, real_count, positive_count
 
 
 
 # original F1 smooth loss from rcnn
-def _smooth_l1( predicts, targets, counted_anchor, sigma=3.0):
+def _smooth_l1( predicts, targets, counted_anchor, sigma=1.0):
     '''
         ResultLoss = outside_weights * SmoothL1(inside_weights * (box_pred - box_targets))
         SmoothL1(x) = 0.5 * (sigma * x)^2,    if |x| < 1 / sigma^2
@@ -911,6 +912,46 @@ def nms(cur_pos, proposals_box, visited, loss_np):
         if iou >= 0.7: ###############iou threshold ################ 
             visited[b_idx, c_idx, d_idx] = 1
             loss_np[b_idx, c_idx, d_idx] = 0
+
+
+
+def test_when_train(delta_np, score_np, p, boxB):
+
+    batch_size = delta_np.shape[0]
+    score_np = score_np[:, 1, :]
+
+    delta_np[:, 0, :] = delta_np[:, 0, :] * p.anchor[:, 2] + p.anchor[:, 0]
+    delta_np[:, 1, :] = delta_np[:, 1, :] * p.anchor[:, 3] + p.anchor[:, 1]
+    delta_np[:, 2, :] = np.exp(delta_np[:, 2, :]) * p.anchor[:, 2]
+    delta_np[:, 3, :] = np.exp(delta_np[:, 3, :]) * p.anchor[:, 3]
+
+
+    print('Inferenced IOU of this batch : ')
+    for b in range(batch_size):
+        
+        delta = delta_np[b]
+        score = score_np[b]
+        best_pscore_id = np.argmax(score)
+        deltaA = delta[:, best_pscore_id]
+
+        boxA = np.zeros([4])
+        boxA[0] = deltaA[0] - deltaA[2]/2
+        boxA[1] = deltaA[1] - deltaA[3]/2
+        boxA[2] = deltaA[0] + deltaA[2]/2
+        boxA[3] = deltaA[1] + deltaA[3]/2
+
+        IOU = bb_intersection_over_union(boxA, boxB[b])
+        print('{:.2f}'.format(IOU)),
+
+    print(" ")
+    return
+
+
+
+
+
+
+
 
 
 

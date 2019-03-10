@@ -70,21 +70,46 @@ _data_provider = datas()
 #config
 batch_size = 8
 lamda = 1
-epoch_rate = 50
+epoch_rate = 20
+warm_up_th = 15
+decode_rate = 1
+decay_step = 25
+start_lr = 0.001
+
 
 
 #begin training
 epoch_num = int(_data_provider.seq_num* epoch_rate)
-decay_step = 25
 lr_decay = math.pow(1e-4, 1.0/int(epoch_num/decay_step))
 print('lr_decay is : {}'.format(lr_decay))
+
+
 for epoch in range(epoch_num):
+
+	if epoch < warm_up_th:
+		adjust_learning_rate(optimizer, decode_rate)
+		start_lr *= decode_rate
+		encode_rate = math.pow(1e-1, (warm_up_th-epoch))
+		decode_rate = math.pow(10, (warm_up_th-epoch))
+		adjust_learning_rate(optimizer, encode_rate)
+		start_lr *= encode_rate
+		print("current learning rate global : {}".format(start_lr))
+
+	elif epoch == warm_up_th:
+		adjust_learning_rate(optimizer, decode_rate)
+		start_lr *= decode_rate
+		print("current learning rate global : {} , back to normal----------------------------".format(start_lr))
+
+
 	_data_provider.rand_pick_seq()
 
 	if (epoch+1)%int(decay_step) == 0:
 		adjust_learning_rate(optimizer, lr_decay)
+		start_lr *= lr_decay
+		print("current learning rate global : {}------------------------------------".format(start_lr))
 
-	for jj in range(int(_data_provider.cur_img_num/100)):
+
+	for jj in range(max(1, int(_data_provider.cur_img_num/200))):
 
 		exemplar_list = [None for i in range(batch_size)]
 		source_list = [None for i in range(batch_size)]
