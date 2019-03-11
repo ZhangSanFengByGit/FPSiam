@@ -3,3 +3,4 @@ eval_output/
 SiamRPNOTB.model
 *.out
 *.pyc
+*.txt
