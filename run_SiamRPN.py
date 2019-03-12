@@ -889,7 +889,7 @@ def _smooth_l1( predicts, targets, counted_anchor, sigma=1.0):
     
     final_loss = torch.Tensor([0]).cuda()
 
-    assert counted_anchor.shape = (counted_anchor.shape[0], 5*19*19)
+    assert counted_anchor.shape == (counted_anchor.shape[0], 5*19*19)
     batch_size = counted_anchor.shape[0]
     idx_size = counted_anchor.shape[1]
     for b in range(batch_size):
@@ -946,7 +946,7 @@ def test_when_train(delta_np, score_np, p, boxB):
         #deltaA = delta[:, best_pscore_id]
 
 
-        boxA = np.zeros(4, 5*19*19)
+        boxA = np.zeros([4, 5*19*19])
         boxA[0] = delta[0] - delta[2]/2
         boxA[1] = delta[1] - delta[3]/2
         boxA[2] = delta[0] + delta[2]/2

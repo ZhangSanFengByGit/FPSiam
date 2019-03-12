@@ -73,14 +73,14 @@ lamda = 1
 epoch_rate = 20
 warm_up_th = 15
 decode_rate = 1
-decay_step = 25
+decay_step = 50
 start_lr = 0.001
 
 
 
 #begin training
 epoch_num = int(_data_provider.seq_num* epoch_rate)
-lr_decay = math.pow(1e-4, 1.0/int(epoch_num/decay_step))
+lr_decay = math.pow(1e-3, 1.0/int(epoch_num/decay_step))
 print('lr_decay is : {}'.format(lr_decay))
 
 
