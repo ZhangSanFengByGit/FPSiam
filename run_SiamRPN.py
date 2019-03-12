@@ -703,6 +703,8 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
                      _cross_entropy_loss(score, score_gt, num_positive, raw_anchors, positive, p)
     print("real count in class loss is {}".format(real_count))
 
+
+
 ############################################################
         ##           box loss
 ############################################################
@@ -758,11 +760,11 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 
     #compute the box loss
     #box_loss = F.mse_loss(delta, delta_gt, reduction='mean')
-    box_loss = _smooth_l1(delta, delta_gt, counted_anchor)
+    box_loss = _smooth_l1(delta, delta_gt, positive)
 
 
     #mean box loss by counted anchor number
-    box_loss = box_loss / max(1, positive_count)
+    box_loss = box_loss / max(1, num_positive)
 
     return cls_loss, box_loss
 
@@ -800,7 +802,7 @@ def bb_intersection_over_union_parallel_batch(proposals_box, boxB, batch_size, s
     return iou
 
 
-def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p, size_average=True, batch_average=False, sigma=1e-3):
+def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p, size_average=True, batch_average=False, sigma=1e-4):
 
     #label size [batch_size, 2, score_size], either contain 0 or 1
     batch_size = output.size()[0]
@@ -886,10 +888,19 @@ def _smooth_l1( predicts, targets, counted_anchor, sigma=1.0):
     loss = smooth_l1_option1*smooth_l1_signs + smooth_l1_option2*(1-smooth_l1_signs)
     
     final_loss = torch.Tensor([0]).cuda()
+
+    assert counted_anchor.shape = (counted_anchor.shape[0], 5*19*19)
+    batch_size = counted_anchor.shape[0]
+    idx_size = counted_anchor.shape[1]
+    for b in range(batch_size):
+        for idx in range(idx_size):
+            if counted_anchor[b, idx] == True:
+                final_loss = final_loss + loss[b, :, idx].sum()
+    '''
     for ii in range(len(counted_anchor)):
         b, idx = counted_anchor[ii][0], counted_anchor[ii][2]
         final_loss = final_loss + loss[b, :, idx].sum()
-
+    '''
     #loss = weights*(smooth_l1_option1*smooth_l1_signs + smooth_l1_option2*(1-smooth_l1_signs))
     #loss.sum()
     #loss = loss.sum()/(weights.sum()+1e-12)
@@ -931,27 +942,21 @@ def test_when_train(delta_np, score_np, p, boxB):
         
         delta = delta_np[b]
         score = score_np[b]
-        best_pscore_id = np.argmax(score)
-        deltaA = delta[:, best_pscore_id]
+        #best_pscore_id = np.argmax(score)
+        #deltaA = delta[:, best_pscore_id]
 
-        boxA = np.zeros([4])
-        boxA[0] = deltaA[0] - deltaA[2]/2
-        boxA[1] = deltaA[1] - deltaA[3]/2
-        boxA[2] = deltaA[0] + deltaA[2]/2
-        boxA[3] = deltaA[1] + deltaA[3]/2
 
-        IOU = bb_intersection_over_union(boxA, boxB[b])
-        print('{:.2f}'.format(IOU)),
+        boxA = np.zeros(4, 5*19*19)
+        boxA[0] = delta[0] - delta[2]/2
+        boxA[1] = delta[1] - delta[3]/2
+        boxA[2] = delta[0] + delta[2]/2
+        boxA[3] = delta[1] + delta[3]/2
+
+        IOU = bb_intersection_over_union_parallel(boxA, boxB[b])
+        max_iou = np.amax(IOU)
+        print('{:.2f}'.format(max_iou)),
 
     print(" ")
     return
-
-
-
-
-
-
-
-
 
 
