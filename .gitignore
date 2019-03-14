@@ -4,3 +4,7 @@ SiamRPNOTB.model
 *.out
 *.pyc
 *.txt
+OTB2015/
+*.model
+*.pth
+
