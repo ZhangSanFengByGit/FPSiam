@@ -62,6 +62,7 @@ class TrackerConfig(object):
     low_th = 0.1
     lamda = 10.
     sample_th = 12
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def update(self, cfg):
         for k, v in cfg.items():
@@ -122,10 +123,10 @@ def tracker_train(net, x_crop, target_pos, target_sz, scale_z, p, gt_pos, gt_sz)
     score_gt[0,max_pos] = 0
     np.ascontiguousarray(score_gt, dtype=np.float32)
     assert score_gt.flags['C_CONTIGUOUS']==True
-    score_gt = torch.from_numpy(score_gt[1]).cuda().float()
+    score_gt = torch.from_numpy(score_gt[1]).to(TrackerConfig.device).float()
 
     if positive_pos.shape[0]>=1:
-        delta_positive = torch.empty([4, positive_pos.shape[0]]).cuda()
+        delta_positive = torch.empty([4, positive_pos.shape[0]]).to(TrackerConfig.device)
         for i in range(positive_pos.shape[0]):
             delta_positive[:, i] = delta[:, positive_pos[i, 0] ]
 
@@ -143,7 +144,7 @@ def tracker_train(net, x_crop, target_pos, target_sz, scale_z, p, gt_pos, gt_sz)
         assert delta_gt.flags['C_CONTIGUOUS']==True
 
     else:
-        delta_positive = torch.empty([4, 1]).cuda()
+        delta_positive = torch.empty([4, 1]).to(TrackerConfig.device)
         delta_positive[:,0] = delta[:,max_pos]
 
         delta_np_pos = np.zeros(delta_np.shape)
@@ -158,14 +159,14 @@ def tracker_train(net, x_crop, target_pos, target_sz, scale_z, p, gt_pos, gt_sz)
         assert delta_gt.flags['C_CONTIGUOUS']==True
 
     #delta_gt = delta_np_pos*np.tile(positive, (4,1)) + delta_np*np.tile(negative, (4,1))
-    delta_gt = torch.from_numpy(delta_gt).cuda().float()
+    delta_gt = torch.from_numpy(delta_gt).to(TrackerConfig.device).float()
     '''
     delta_np_pos = np.zeros(delta_np.shape)
     delta_np_pos[0,:] = (shift[0] - p.anchor[:,0])/p.anchor[:,2]
     delta_np_pos[1,:] = (shift[1] - p.anchor[:,1])/p.anchor[:,3]
     delta_np_pos[2,:] = np.log(gt_sz[0]/p.anchor[:,2])
     delta_np_pos[3,:] = np.log(gt_sz[1]/p.anchor[:,3])
-    delta_gt = torch.from_numpy(delta_np_pos).cuda().float()
+    delta_gt = torch.from_numpy(delta_np_pos).to(TrackerConfig.device).float()
     '''
     #compute loss:
     cls_loss = class_balanced_cross_entropy_loss(score[1], score_gt)
@@ -262,7 +263,7 @@ def SiamRPN_init(im, target_pos, target_sz, net):
 
     z = z_crop.unsqueeze(0)         # removed the Variable interface
     z_large = z_crop_large.unsqueeze(0)
-    net.temple(z.cuda(), z_large.cuda())
+    net.temple(z.to(TrackerConfig.device), z_large.to(TrackerConfig.device))
 
     if p.windowing == 'cosine':
         window = np.outer(np.hanning(p.score_size), np.hanning(p.score_size))
@@ -296,7 +297,7 @@ def SiamRPN_track(state, im):
     s_x = s_z + 2 * pad
 
     # extract scaled crops for search region x at previous target position
-    x_crop = get_subwindow_tracking(im, target_pos, p.instance_size, round(s_x), avg_chans).unsqueeze(0).cuda()   # removed the Variable interface
+    x_crop = get_subwindow_tracking(im, target_pos, p.instance_size, round(s_x), avg_chans).unsqueeze(0).to(TrackerConfig.device)   # removed the Variable interface
 
     target_pos, target_sz, score = tracker_eval(net, x_crop, target_pos, target_sz * scale_z, window, scale_z, p)
     target_pos[0] = max(0, min(state['im_w'], target_pos[0]))
@@ -326,7 +327,7 @@ def SiamRPN_train(state, im, old_pos, old_sz, gt_pos, gt_sz):
     s_x = s_z + 2 * pad
 
     # extract scaled crops for search region x at previous target position
-    x_crop = get_subwindow_tracking(im, target_pos, p.instance_size, round(s_x), avg_chans).unsqueeze(0).cuda()
+    x_crop = get_subwindow_tracking(im, target_pos, p.instance_size, round(s_x), avg_chans).unsqueeze(0).to(TrackerConfig.device)
 
     cls_loss, box_loss = tracker_train(net, x_crop, target_pos, target_sz* scale_z, scale_z, p, gt_pos, gt_sz* scale_z)
     return cls_loss, box_loss
@@ -348,7 +349,7 @@ def SiamRPN_set_source(state, im, source_pos, source_sz):
     s_x = s_z + 2 * pad
 
     # extract scaled crops for search region x at previous target position
-    x_crop = get_subwindow_tracking(im, target_pos, p.instance_size, round(s_x), avg_chans).unsqueeze(0).cuda() 
+    x_crop = get_subwindow_tracking(im, target_pos, p.instance_size, round(s_x), avg_chans).unsqueeze(0).to(TrackerConfig.device) 
     # x_crop removed the torch.Variable interface, due to the deprecated Variable in torch 0.4.0
     net(x_crop, set_source = True)
 
@@ -528,7 +529,7 @@ def SiamRPN_init_batch(exemplar_list, exemplar_cxy_list, net):
     assert z_batch.size(0)==batch_size
     assert z_large_batch.size(0)==batch_size
 
-    net.temple(z_batch.cuda(), z_large_batch.cuda())
+    net.temple(z_batch.to(TrackerConfig.device), z_large_batch.to(TrackerConfig.device))
 
     train_config['avg_chans_list'] = avg_chans_list
     train_config['p'] = p
@@ -565,7 +566,7 @@ def SiamRPN_set_source_batch(train_config, source_list, source_cxy_list):
 
     assert x_batch.size(0)==batch_size, '{}'.format(x_batch.size())
 
-    net(x_batch.cuda(), set_source = True)
+    net(x_batch.to(TrackerConfig.device), set_source = True)
 
 
 def SiamRPN_train_batch(train_config, instance_list, source_cxy_list, instance_cxy_list):
@@ -609,7 +610,7 @@ def SiamRPN_train_batch(train_config, instance_list, source_cxy_list, instance_c
 
     assert x_batch.size(0)==batch_size
 
-    cls_loss, box_loss = tracker_train_batch(net, x_batch.cuda(), shift, boxB, gt_sz_list, p)
+    cls_loss, box_loss = tracker_train_batch(net, x_batch.to(TrackerConfig.device), shift, boxB, gt_sz_list, p)
     return cls_loss, box_loss
 
 
@@ -621,7 +622,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
 ############################################################
         ##      transfer feature map to proposals
 ############################################################
-    delta = delta.view(batch_size, 4, -1)  # batch * 4 * (5*19*19)
+    delta = delta.view(batch_size, 4, -1).float()  # batch * 4 * (5*19*19)
     score = F.softmax(score.view(batch_size, 2, -1), dim = 1).float()  # batch * 2 * (5*19*19)
     score_size = score.size(2)
     assert torch.max(delta)<= float('inf')
@@ -697,7 +698,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
         score_gt[batch, 1, int(max_pos[batch])] = 1
         score_gt[batch, 0, int(max_pos[batch])] = 0
 
-    score_gt = torch.from_numpy(score_gt).cuda().float()
+    score_gt = torch.from_numpy(score_gt).to(TrackerConfig.device).float()
     #compute class loss:
     cls_loss,counted_anchor,real_count, positive_count =\
                      _cross_entropy_loss(score, score_gt, num_positive, raw_anchors, positive, p)
@@ -717,7 +718,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
             batch_postive_num = positive_pos[batch].shape[0]
 
             #pick the positive part delta
-            delta_positive = torch.empty([4, batch_postive_num]).cuda()
+            delta_positive = torch.empty([4, batch_postive_num]).to(TrackerConfig.device)
             for i in range(batch_postive_num):
                 delta_positive[:, i] = delta[batch, :, positive_pos[batch][i, 0]]
 
@@ -733,7 +734,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
             for i in range(batch_postive_num):
                 delta_gt[:, i] = delta_np_pos[:, positive_pos[batch][i, 0]]
         else:
-            delta_positive = torch.empty([4, 1]).cuda()
+            delta_positive = torch.empty([4, 1]).to(TrackerConfig.device)
             delta_positive[:,0] = delta[batch, :,int(max_pos[batch])]
 
             #all the delta gt
@@ -756,7 +757,7 @@ def tracker_train_batch(net, x_batch, shift, boxB, gt_sz_list, p):
         ############encode ground_truth
 
 
-    delta_gt = torch.from_numpy(delta_gt_all).cuda().float()
+    delta_gt = torch.from_numpy(delta_gt_all).to(TrackerConfig.device).float()
 
     #compute the box loss
     #box_loss = F.mse_loss(delta, delta_gt, reduction='mean')
@@ -821,7 +822,7 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p,
 
     assert not torch.isnan(output_loss).any()
     loss_np = output_loss.data.cpu().numpy()
-    final_loss = torch.Tensor([0]).cuda()
+    final_loss = torch.Tensor([0]).to(TrackerConfig.device).float()
     counted_anchor = []
 
     loop, real_count, positive_count= 0, 0, 0
@@ -835,13 +836,13 @@ def _cross_entropy_loss(output, label, num_positive, proposals_box, positive, p,
         d_idx = (cur_pos - b_idx*(2* (5*19*19)) - c_idx*(1805))
         cur_pos = [b_idx, c_idx, d_idx]
         #####compute index
-
+    
+        final_loss = final_loss + output_loss[cur_pos[0], cur_pos[1], cur_pos[2]]
+        
         loss_np[cur_pos[0], cur_pos[1], cur_pos[2]] = 0
         if visited[cur_pos[0], cur_pos[1], cur_pos[2]] == 1: #[batch_size, 2, 5*19*19]
             continue
 
-        final_loss = final_loss + output_loss[cur_pos[0], cur_pos[1], cur_pos[2]]
-        
         if positive[b_idx, d_idx] == True:
             counted_anchor.append(cur_pos)
             positive_count += 1
@@ -881,13 +882,13 @@ def _smooth_l1( predicts, targets, counted_anchor, sigma=1.0):
     sigma2 = sigma * sigma
     diffs  =  predicts - targets
     smooth_l1_signs = torch.abs(diffs) <  (1.0 / sigma2)
-    smooth_l1_signs = smooth_l1_signs.type(torch.cuda.FloatTensor)
+    smooth_l1_signs = smooth_l1_signs.float()
 
     smooth_l1_option1 = 0.5 * diffs* diffs *  sigma2
     smooth_l1_option2 = torch.abs(diffs) - 0.5  / sigma2
     loss = smooth_l1_option1*smooth_l1_signs + smooth_l1_option2*(1-smooth_l1_signs)
     
-    final_loss = torch.Tensor([0]).cuda()
+    final_loss = torch.Tensor([0]).to(TrackerConfig.device)
 
     assert counted_anchor.shape == (counted_anchor.shape[0], 5*19*19)
     batch_size = counted_anchor.shape[0]
@@ -926,8 +927,10 @@ def nms(cur_pos, proposals_box, visited, loss_np):
 
 
 
-def test_when_train(delta_np, score_np, p, boxB):
+def test_when_train(delta_np_in, score_np_in, p, boxB):
 
+    delta_np = np.copy(delta_np_in)
+    score_np = np.copy(score_np_in)
     batch_size = delta_np.shape[0]
     score_np = score_np[:, 1, :]
 

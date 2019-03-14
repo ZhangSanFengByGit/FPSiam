@@ -3,6 +3,8 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from run_SiamRPN import TrackerConfig
+from feature_map import visualize_feature_map
 
 
 class SiamRPN(nn.Module):
@@ -11,6 +13,7 @@ class SiamRPN(nn.Module):
         configs = list(map(lambda x: 3 if x==3 else x*size, configs))
         feat_in = configs[-1]
         super(SiamRPN, self).__init__()
+        self.device = TrackerConfig.device
         self.featureExtract = nn.Sequential(  #271 127
             nn.Conv2d(configs[0], configs[1] , kernel_size=11, stride=2),  #131 59
             nn.BatchNorm2d(configs[1]),
@@ -98,6 +101,7 @@ class SiamRPN(nn.Module):
 
         batch_size = x.size(0)
         x_f = self.featureExtract(x)
+        #visualize_feature_map(x_f,255,255,'final')
 
         if set_source:
             self.old_f = x_f.detach()
@@ -131,8 +135,8 @@ class SiamRPN(nn.Module):
             assert not torch.isnan(weights[0]).any()
             assert not torch.isnan(weights[1]).any()
 
-            prop_f_weighted = torch.empty(prop_f.size(), device='cuda', requires_grad = False)
-            x_f_weighted = torch.empty(x_f.size(), device='cuda', requires_grad = False)
+            prop_f_weighted = torch.empty(prop_f.size(), requires_grad = False).to(self.device)
+            x_f_weighted = torch.empty(x_f.size(), requires_grad = False).to(self.device)
             for batch in range(batch_size):
                 prop_f_weighted[batch] = prop_f[batch] * weights[0,batch]
                 x_f_weighted[batch] = x_f[batch] * weights[1,batch]
@@ -149,8 +153,8 @@ class SiamRPN(nn.Module):
             self.old_f = fuzed_x_f.detach()
             assert not torch.isnan(fuzed_x_f).any()
 
-        delta = torch.empty([batch_size, 4*5, 19, 19], device='cuda', requires_grad = False)
-        score = torch.empty([batch_size, 2*5, 19, 19], device='cuda', requires_grad = False)
+        delta = torch.empty([batch_size, 4*5, 19, 19], requires_grad = False).to(self.device)
+        score = torch.empty([batch_size, 2*5, 19, 19], requires_grad = False).to(self.device)
 
         for batch in range(batch_size):
             delta[batch] = self.regress_adjust(F.conv2d(self.conv_r2(fuzed_x_f[batch].unsqueeze(0)), self.r1_kernel[batch]))
@@ -185,7 +189,7 @@ class SiamRPN(nn.Module):
 
 
     def propagate(self, kernels,b,c,h,w):
-        prop_f = torch.empty([b,c,h,w], device='cuda', requires_grad = False)
+        prop_f = torch.empty([b,c,h,w], requires_grad = False).to(self.device)
         for bb in range(b):  
             for hh in range(h):   #24
                 for ww in range(w):   #24

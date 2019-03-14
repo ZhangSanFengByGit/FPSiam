@@ -22,7 +22,10 @@ def parse_region(string):
 
 class datas(object):
 	def __init__(self):
-		OTB_path = '/home/zhangzichun/OTB2015/'
+		if os.path.exists('/home/zhangzichun/OTB2015/'):
+			OTB_path = '/home/zhangzichun/OTB2015/'
+		else:
+			OTB_path = './OTB2015/'
 		seq_list = open(OTB_path+'files.txt','r').readlines()
 		for i in range(len(seq_list)):
 			seq_list[i] = seq_list[i].replace('seq/','')
@@ -80,7 +83,10 @@ class datas(object):
 					self.cur_gt = open(self.cur_seq_path+'groundtruth_rect.2.txt','r').readlines()
 
 			elif self.cur_seq=='Human4':
-				self.cur_gt = open(self.cur_seq_path+'groundtruth_rect.2.txt','r').readlines()
+				if os.path.exists(self.cur_seq_path+'groundtruth_rect.2.txt'):
+					self.cur_gt = open(self.cur_seq_path+'groundtruth_rect.2.txt','r').readlines()
+				else:
+					self.cur_gt = open(self.cur_seq_path+'groundtruth_rect.txt','r').readlines()
 
 			else:
 				self.cur_gt = open(self.cur_seq_path+'groundtruth_rect.txt','r').readlines()

@@ -10,7 +10,7 @@ import time
 import math
 
 from net import SiamRPN
-from run_SiamRPN import SiamRPN_init_batch, SiamRPN_train_batch, SiamRPN_set_source_batch
+from run_SiamRPN import SiamRPN_init_batch, SiamRPN_train_batch, SiamRPN_set_source_batch, TrackerConfig
 from utils import get_axis_aligned_bbox, cxy_wh_2_rect, rect_2_cxy_wh, adjust_learning_rate
 from data_provider import datas
 
@@ -18,16 +18,20 @@ from data_provider import datas
 save_path = (realpath(dirname(__file__)))+'/V3_AutoSaved_epoch_model/'
 if not os.path.exists(save_path):
 	os.mkdir(save_path)
-#save_print = open('process1.out','w')
 
 # load net
-net_file = join(realpath(dirname(__file__)), 'SiamRPNOTB.model')
 net = SiamRPN()
-pretrain_dict = torch.load(net_file)
-model_dict = net.state_dict()
-model_dict.update(pretrain_dict)
-net.load_state_dict(model_dict)
-net.cuda().train()
+if os.path.exists(join(realpath(dirname(__file__)), 'SiamRPNOTB.model')):
+	net_file = join(realpath(dirname(__file__)), 'SiamRPNOTB.model')
+	pretrain_dict = torch.load(net_file)
+	model_dict = net.state_dict()
+	model_dict.update(pretrain_dict)
+	net.load_state_dict(model_dict)
+else:
+	print("no OTB model to load++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+net.to(TrackerConfig.device)
+net.train()
+
 
 
 
@@ -50,7 +54,7 @@ optimizer = torch.optim.SGD([{'params': net.featureExtract[11].parameters()}, \
 							 {'params': net.conv_xfit.parameters(), 'lr': 0.007}, \
 							 {'params': net.conv_oldfit.parameters(), 'lr': 0.007}, \
 							 {'params': net.kernel_pre.parameters(), 'lr': 0.01}, \
-							 {'params': net.embed_net.parameters(), 'lr': 0.007} ], lr = 0.001, momentum = 0.9, weight_decay = 0.00005)
+							 {'params': net.embed_net.parameters(), 'lr': 0.007} ], lr = 0.001, momentum = 0.9, weight_decay = 0.0005)
 
 
 

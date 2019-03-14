@@ -4,3 +4,9 @@ SiamRPNOTB.model
 *.out
 *.pyc
 *.txt
+.vscode/
+OTB2015/
+*.model
+*.pth
+siamrpn_train.py
+vis_feature.py
