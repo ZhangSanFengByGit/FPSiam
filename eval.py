@@ -19,9 +19,11 @@ seqs_idx=None
 parser = argparse.ArgumentParser(description='Evaluate the pretrained model')
 parser.add_argument('--seqsIdx', type=int, default = None)
 parser.add_argument('--fixSeq', type=str, default=None)
+parser.add_argument('--model', type=str, default=None)
 args = parser.parse_args()
 fixSeq = args.fixSeq 
 seqs_idx = args.seqsIdx
+model = args.model
 
 
 def encode_region(region):
@@ -35,7 +37,7 @@ def encode_region(region):
 
 #custom params
 load_path = (realpath(dirname(__file__)))+'/V3_AutoSaved_epoch_model/'
-save_res_path = (realpath(dirname(__file__)))+'/195_tracking_result/'
+save_res_path = (realpath(dirname(__file__)))+'/'+model+'/'
 if not os.path.exists(save_res_path):
 	os.mkdir(save_res_path)
 
@@ -89,7 +91,7 @@ else:
 		raise RuntimeError('no seqs_idx found')
 
 # load net
-net_file = load_path+'V3_epoch_195.pth'#join(realpath(dirname(__file__)), 'SiamRPNOTB.model')
+net_file = load_path + model#join(realpath(dirname(__file__)), 'SiamRPNOTB.model')
 net = SiamRPN(pretrain = True)
 pretrain_dict = torch.load(net_file)
 model_dict = net.state_dict()
@@ -113,7 +115,7 @@ for seq in OTB_seqs:
 	exemplar = cv2.imread(exemplar_path)
 	exemplar_pos, exemplar_sz = rect_2_cxy_wh(exemplar_gt)
 	state = SiamRPN_init(exemplar, exemplar_pos, exemplar_sz, net)
-	save_file = save_res_path + seq +'_ours.txt'
+	save_file = save_res_path + seq +'.txt'
 	tracking_res = open(save_file, 'w')
 
 	for idx in range(cur_img_num):
