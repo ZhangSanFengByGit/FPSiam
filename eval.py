@@ -37,7 +37,7 @@ def encode_region(region):
 
 #custom params
 load_path = (realpath(dirname(__file__)))+'/V3_AutoSaved_epoch_model/'
-save_res_path = (realpath(dirname(__file__)))+'/'+model+'/'
+save_res_path = (realpath(dirname(__file__)))+'/'+model+'_OTBresult/'
 if not os.path.exists(save_res_path):
 	os.mkdir(save_res_path)
 
@@ -91,7 +91,7 @@ else:
 		raise RuntimeError('no seqs_idx found')
 
 # load net
-net_file = load_path + model#join(realpath(dirname(__file__)), 'SiamRPNOTB.model')
+net_file = load_path + model+'.pth'#join(realpath(dirname(__file__)), 'SiamRPNOTB.model')
 net = SiamRPN(pretrain = True)
 pretrain_dict = torch.load(net_file)
 model_dict = net.state_dict()
